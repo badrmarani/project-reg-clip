@@ -1,14 +1,14 @@
-import os
 import json
-import torch
-import pytorch_lightning as pl
-
+import os
 from argparse import ArgumentParser
 
-from src.models.resnet import ResNet
-from src.models.lightning_base import LightningBase
-from src.datasets import CelebA, Waterbirds, Nico
+import pytorch_lightning as pl
+import torch
+
+from src.datasets import CelebA, Nico, Waterbirds
 from src.datasets.loader import get_loaders
+from src.models.lightning_base import LightningBase
+from src.models.resnet import ResNet
 
 
 def main(args):
@@ -51,14 +51,24 @@ def main(args):
     #     pin_memory=use_cuda,
     # )
 
+    if args.use_stratified_sampling:
+        msg = "_stratified_sampling"
+        if args.on_labels:
+            msg += "_on_labels"
+        else:
+            msg += "_on_groups"
+    else:
+        msg = ""
+
     experiment_name = (
         f"{args.model_name}"
         + f"_{args.dataset}"
         + f"_{spurious_label}"
         + f"_{args.weight_decay}"
-    )
+        + msg
+    ).lower()
 
-    if os.path.exists(f"checkpoints/{experiment_name}/"):
+    if os.path.exists(f"checkpoints/{experiment_name}/last.ckpt"):
         print(f"Experiment {experiment_name} already exists, resuming training")
         ckpt = torch.load(f"checkpoints/{experiment_name}/last.ckpt")
 
@@ -82,7 +92,7 @@ def main(args):
 
     ckpt_callback = pl.callbacks.ModelCheckpoint(
         dirpath=os.path.join(args.save_path, f"checkpoints/{experiment_name}/"),
-        filename="checkpoint-{epoch:03d}-{val/acc_avg:.5f}-{val/wg_acc:.5f}",
+        filename="checkpoint-{epoch:03d}-val_acc_avg:{val/acc_avg:.5f}-val_wg_acc:{val/wg_acc:.5f}",
         monitor="val/wg_acc",
         save_last=True,
         save_top_k=3,
@@ -92,7 +102,7 @@ def main(args):
 
     trainer = pl.Trainer(
         accelerator="gpu",
-        devices="auto",
+        devices=[1],
         benchmark=True,
         enable_progress_bar=True,
         log_every_n_steps=1,

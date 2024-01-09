@@ -1,4 +1,4 @@
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 
 def stratified_sampling(dataset: Dataset, on_labels: bool):
@@ -18,7 +18,10 @@ def stratified_sampling(dataset: Dataset, on_labels: bool):
 
 
 def get_loaders(
-    dataset: Dataset, use_stratified_sampling: bool = True, labels: bool = True, **kwargs
+    dataset: Dataset,
+    use_stratified_sampling: bool = True,
+    labels: bool = True,
+    **kwargs
 ):
     if dataset.split == 0:
         if use_stratified_sampling:

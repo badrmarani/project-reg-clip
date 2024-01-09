@@ -1,6 +1,6 @@
+import pytorch_lightning as pl
 import torch
 from torch import nn
-import pytorch_lightning as pl
 from torchmetrics.classification import BinaryAccuracy
 
 from ..metrics import WorstGroupAccuracy
@@ -19,7 +19,7 @@ class LightningBase(pl.LightningModule):
 
         device = get_device(model)
 
-        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.loss_fn = nn.BCELoss()
         self.avg_accuracy = BinaryAccuracy().to(device)
         self.wg_accuracy = WorstGroupAccuracy().to(device)
 
@@ -52,7 +52,6 @@ class LightningBase(pl.LightningModule):
             on_epoch=False,
             prog_bar=True,
             logger=True,
-            sync_dist=True,
         )
 
         self.log(
@@ -62,27 +61,26 @@ class LightningBase(pl.LightningModule):
             on_epoch=False,
             prog_bar=True,
             logger=True,
-            sync_dist=True,
         )
 
         g = batch["group"]
         wg_acc, results = self.wg_accuracy(y_pred, y_true, g)
         self.log(
             "train/wg_acc",
-            wg_acc.item(),
+            wg_acc,
             on_step=True,
+            on_epoch=False,
             logger=True,
             prog_bar=True,
-            sync_dist=True,
         )
         for k, v in results.items():
             self.log(
                 f"train/acc_group_{k}",
-                v.item(),
+                v,
                 on_step=True,
+                on_epoch=False,
                 logger=True,
                 prog_bar=False,
-                sync_dist=True,
             )
 
         return loss
@@ -108,12 +106,12 @@ class LightningBase(pl.LightningModule):
 
         self.log(
             "val/bce_loss",
-            loss,
+            loss.item(),
             on_step=False,
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            sync_dist=True,
+            # sync_dist=True,
         )
 
         self.avg_accuracy.update(y_pred, y_true)
@@ -129,28 +127,28 @@ class LightningBase(pl.LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            sync_dist=True,
+            # sync_dist=True,
         )
 
         wg_acc, results = self.wg_accuracy.compute()
         self.log(
             "val/wg_acc",
-            wg_acc.item(),
+            wg_acc,
             on_step=False,
             on_epoch=True,
             logger=True,
             prog_bar=True,
-            sync_dist=True,
+            # sync_dist=True,
         )
         for k, v in results.items():
             self.log(
                 f"val/acc_group_{k}",
-                v.item(),
+                v,
                 on_step=False,
                 on_epoch=True,
                 logger=True,
                 prog_bar=False,
-                sync_dist=True,
+                # sync_dist=True,
             )
 
         self.avg_accuracy.reset()

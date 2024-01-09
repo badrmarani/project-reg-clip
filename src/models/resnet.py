@@ -1,6 +1,6 @@
 import torch
-from torch import nn
 from timm import create_model
+from torch import nn
 
 
 class ResNet(nn.Module):

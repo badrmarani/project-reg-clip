@@ -1,7 +1,8 @@
 import os
-from PIL import Image
+
 import pandas as pd
 import torch
+from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
@@ -33,6 +34,8 @@ class CelebA(Dataset):
             self.transforms = transform_data()
         else:
             self.transforms = transforms
+
+        self.captions = pd.read_csv(os.path.join(root_dir, "list_captions_celeba.csv"), index_col=0)
 
         self.metadata = pd.read_csv(
             os.path.join(root_dir, "list_attr_celeba.csv"),
@@ -81,6 +84,7 @@ class CelebA(Dataset):
 
         items = {}
         items["filename"] = sample.name
+        items["caption"] = self.captions.loc[sample.name, "caption"]
         items["image"] = image
         items["label"] = torch.as_tensor(sample["label"], dtype=DTYPE)
         items["spurious_label"] = torch.as_tensor(sample["spurious_label"], dtype=DTYPE)
