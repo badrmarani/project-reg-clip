@@ -23,7 +23,3 @@ class WorstGroupAccuracy(Metric):
         x[x.isnan()] = 0.0
         wg_acc = x.min()
         return wg_acc.cpu().item(), {k: v.cpu().item() for k, v in enumerate(x)}
-
-
-def clip_score(text, images):
-    pass
