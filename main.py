@@ -1,4 +1,3 @@
-import json
 import os
 import random
 from argparse import ArgumentParser
@@ -28,10 +27,10 @@ def main(hparams):
         root_dir=root_dir,
         spurious_label=hparams.spurious_label,
         stratified_sampling=hparams.stratified_sampling,
-        transforms=None,
         batch_size=hparams.batch_size,
         num_workers=hparams.num_workers,
         pin_memory=use_cuda,
+        use_image_captions=hparams.use_image_captions,
     )
 
     last_ckpt_dir = os.path.join(hparams.save_dir, experiment_name, "last.ckpt")
@@ -42,8 +41,8 @@ def main(hparams):
         print(f"Starting new experiment {experiment_name}")
         ckpt = None
 
-    if hparams.optimizer_name != "SGD":
-        hparams.pop("momentum")
+    # if hparams.optimizer_name != "SGD":
+    #     hparams.pop("momentum")
     model = ResNet(hparams)
 
     # callbacks
@@ -65,7 +64,7 @@ def main(hparams):
     accelerator = "cuda" if use_cuda else "cpu"
     trainer = pl.Trainer(
         accelerator=accelerator,
-        devices=[0],
+        devices=[hparams.device],
         benchmark=True,
         enable_progress_bar=True,
         log_every_n_steps=1,
@@ -77,11 +76,13 @@ def main(hparams):
     )
 
     trainer.fit(model, datamodule, ckpt_path=ckpt)
+    trainer.test(datamodule=datamodule)
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
 
+    parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--max-epochs", type=int, default=1)
     parser.add_argument("--save-dir", type=str, default="./")
 
@@ -89,10 +90,16 @@ if __name__ == "__main__":
     parser.add_argument("--num-classes", type=int, default=1)
     parser.add_argument("--pretrained", action="store_true", default=False)
 
+    # parser.add_argument("--constrastive", action="store_true", default=False)
+    # parser.add_argument("--beta-metric-loss", type=float, default=0.5)
+    # parser.add_argument("--temperature-metric-loss", type=float, default=1.0)
+
     parser.add_argument("--dataset", type=str, default="celeba")
-    parser.add_argument("--root-dir", type=str, default="/home/jupyterlab/datasets")
+    parser.add_argument("--root-dir", type=str, default=None)
     parser.add_argument("--spurious-label", type=str, default="Male")
     parser.add_argument("--stratified-sampling", action="store_true", default=False)
+    parser.add_argument("--use-image-captions", action="store_true", default=False)
+
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--num-workers", type=int, default=1)
 
@@ -100,6 +107,8 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=0.0)
     parser.add_argument("--momentum", type=float, default=0.9)
+
+    parser.add_argument("--normalize-clip-loss", action="store_true", default=False)
 
     hparams = parser.parse_args()
     main(hparams)

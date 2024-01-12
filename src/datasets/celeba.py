@@ -28,17 +28,18 @@ def transform_data():
 
 class CelebADataset(Dataset):
     def __init__(
-        self, root_dir: str, spurious_label: str, split: int, transforms=None
+        self,
+        root_dir: str,
+        spurious_label: str = "Male",
+        split: int = 0,
+        use_image_captions: bool = False,
     ) -> None:
         super().__init__()
 
         self.root_dir = root_dir
         self.split = split
         self.spurious_label = spurious_label
-        if transforms is None:
-            self.transforms = transform_data()
-        else:
-            self.transforms = transforms
+        self.transforms = transform_data()
 
         self.metadata = pd.read_csv(
             os.path.join(root_dir, "list_attr_celeba.csv"),
@@ -48,6 +49,11 @@ class CelebADataset(Dataset):
         )
         for c in self.metadata.columns:
             self.metadata[c] = self.metadata[c].apply(lambda x: 0 if x == -1 else 1)
+
+        if use_image_captions:
+            self.df_captions = pd.read_csv(
+                os.path.join(root_dir, "list_captions_celeba.csv"), index_col=0
+            )
 
         df_partitions = pd.read_csv(
             os.path.join(root_dir, "list_eval_partition.csv"),
@@ -86,7 +92,8 @@ class CelebADataset(Dataset):
         image = self.transforms(image)
 
         items = {}
-        items["filename"] = sample.name
+        items["filename"] = str(sample.name)
+        items["caption"] = str(self.df_captions.loc[sample.name, "caption"])
         items["image"] = image
         items["label"] = torch.as_tensor(sample["label"], dtype=DTYPE)
         items["spurious_label"] = torch.as_tensor(sample["spurious_label"], dtype=DTYPE)
@@ -98,22 +105,22 @@ class CelebADataModule(pl.LightningDataModule):
     def __init__(
         self,
         root_dir: str,
-        spurious_label: str,
-        stratified_sampling,
-        transforms,
-        batch_size,
-        num_workers,
-        pin_memory,
+        spurious_label: str = "Male",
+        stratified_sampling: bool = True,
+        use_image_captions: bool = False,
+        df_captions_dir: str = None,
+        batch_size: int = 128,
+        num_workers: int = 2,
+        pin_memory: bool = torch.cuda.is_available(),
     ):
         super().__init__()
 
         self.root_dir = root_dir
         self.spurious_label = spurious_label
-        if transforms is None:
-            self.transforms = transform_data
-        else:
-            self.transforms = transforms
+        self.transforms = transform_data
         self.stratified_sampling = stratified_sampling
+        self.use_image_captions = use_image_captions
+        self.df_captions_dir = df_captions_dir
 
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -142,9 +149,24 @@ class CelebADataModule(pl.LightningDataModule):
                     zip_ref.extractall(self.root_dir)
 
     def setup(self, stage=None):
-        self.train_dataset = CelebADataset(self.root_dir, self.spurious_label, 0)
-        self.val_dataset = CelebADataset(self.root_dir, self.spurious_label, 1)
-        self.test_dataset = CelebADataset(self.root_dir, self.spurious_label, 2)
+        self.train_dataset = CelebADataset(
+            root_dir=self.root_dir,
+            spurious_label=self.spurious_label,
+            split=0,
+            use_image_captions=self.use_image_captions,
+        )
+        self.val_dataset = CelebADataset(
+            root_dir=self.root_dir,
+            spurious_label=self.spurious_label,
+            split=1,
+            use_image_captions=self.use_image_captions,
+        )
+        self.test_dataset = CelebADataset(
+            root_dir=self.root_dir,
+            spurious_label=self.spurious_label,
+            split=2,
+            use_image_captions=self.use_image_captions,
+        )
 
     def train_dataloader(self):
         shuffle = False

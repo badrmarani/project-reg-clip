@@ -3,7 +3,12 @@ import torch
 from timm import create_model
 from torch import nn
 from torchmetrics.classification import BinaryAccuracy
+from pytorch_metric_learning import losses
+from pytorch_metric_learning import distances
 
+import os
+
+from ..losses import CLIPLoss
 from ..metrics import WorstGroupAccuracy
 
 
@@ -27,8 +32,23 @@ class ResNet(pl.LightningModule):
             "weight_decay": hparams.weight_decay,
             "momentum": hparams.momentum,
         }
+        if self.hparams.optimizer_name != "SGD":
+            self.optimizer_config.pop("momentum")
 
-        self.loss_fn = nn.BCEWithLogitsLoss()
+        # self.loss_fn = nn.BCEWithLogitsLoss()
+
+        # if self.hparams.constrastive:
+        #     self.constr_loss_fn = losses.NTXentLoss(temperature=0.07)
+
+        self.loss_fn = nn.BCEWithLogitsLoss(reduction="none")
+        device = f"cuda:{self.hparams.device}" if torch.cuda.is_available() else "cpu"
+        self.clip_loss_fn = CLIPLoss(
+            dataset_root_dir=os.path.join(
+                self.hparams.root_dir, self.hparams.dataset, "./img_align_celeba/"
+            ),
+            normalize=self.hparams.normalize_clip_loss,
+            device=device,
+        )
 
         self.train_accuracy = BinaryAccuracy()
         self.valid_accuracy = BinaryAccuracy()
@@ -36,7 +56,8 @@ class ResNet(pl.LightningModule):
         self.valid_wga = WorstGroupAccuracy()
 
     def forward(self, batch, validation: bool = False):
-        batch.pop("filename")
+        filename = batch.pop("filename")
+        caption = batch.pop("caption")
         x = batch["image"]
         g = batch["group"]
         y_true = batch["label"].float()
@@ -49,14 +70,37 @@ class ResNet(pl.LightningModule):
         else:
             y_pred = torch.argmax(torch.softmax(logits, dim=1), dim=1).unsqueeze(1)
 
-        loss = self.loss_fn(logits, y_true)
+        ce_loss = self.loss_fn(logits, y_true)
         self.log(
-            f"{self.logging_prefix}/loss",
+            f"{self.logging_prefix}/ce_loss",
+            ce_loss.mean(),
+            prog_bar=self.log_progress_bar,
+            logger=True,
+        )
+
+        loss = self.clip_loss_fn(y_pred, y_true, g, filename, caption, ce_loss).mean()
+        self.log(
+            f"{self.logging_prefix}/clip_reg_loss",
             loss,
             prog_bar=self.log_progress_bar,
             logger=True,
-            sync_dist=True,
         )
+
+        # metric_loss = 0.0
+        # if self.hparams.constrastive:
+        #     embeddings = self.model.global_pool(self.model.forward_features(x))
+        #     embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+        #     embeddings = torch.matmul(embeddings, embeddings.T).div(
+        #         self.hparams.temperature_metric_loss
+        #     )
+        #     metric_loss = self.constr_loss_fn(embeddings, y_true.squeeze(1))
+
+        #     self.log(
+        #         f"{self.logging_prefix}/metric_loss",
+        #         metric_loss,
+        #         prog_bar=self.log_progress_bar,
+        #         logger=True,
+        #     )
 
         if validation:
             self.valid_accuracy.update(y_pred, y_true)
@@ -88,6 +132,8 @@ class ResNet(pl.LightningModule):
                     on_step=self.log_on_step,
                     logger=True,
                 )
+
+        # loss = ce_loss
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -190,11 +236,4 @@ class ResNet(pl.LightningModule):
         optimizer_name = self.optimizer_config.pop("optimizer_name", "AdamW")
         optimizer = getattr(torch.optim, optimizer_name)
         optimizer = optimizer(self.model.parameters(), **self.optimizer_config)
-
-        # t = [1] * self.num_training_steps
-        # scheduler = torch.optim.lr_scheduler.LambdaLR(
-        #     optimizer, lambda x: t.__getitem__(x)
-        # )
-        # return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
-
         return [optimizer]

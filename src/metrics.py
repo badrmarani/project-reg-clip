@@ -22,4 +22,4 @@ class WorstGroupAccuracy(Metric):
         x = self.correct.float() / self.total
         x[x.isnan()] = 0.0
         wg_acc = x.min()
-        return wg_acc.cpu().item(), {k: v.cpu().item() for k, v in enumerate(x)}
+        return wg_acc.cpu().item(), x
