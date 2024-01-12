@@ -58,7 +58,7 @@ class CLIPLoss(nn.Module):
     def forward_similarity(self, filenames_wrong, filenames_correct, keywords):
         sim_wrong = self.clip_score(filenames_wrong, keywords)
         sim_correct = self.clip_score(filenames_correct, keywords)
-        sim = sim_correct - sim_wrong
+        sim = sim_wrong - sim_correct
 
         if self.normalize:
             sim -= sim.min()
